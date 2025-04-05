@@ -165,9 +165,9 @@ function addMissingAreas(areas: Area[]) {
   ids.sort((a, b) => a.localeCompare(b));
 
   for (i = 0; i < ids.length; ++i) {
-    a = ids[i];
+    a = ids[i]!;
     for (j = i + 1; j < ids.length; ++j) {
-      b = ids[j];
+      b = ids[j]!;
       if (!(`${a},${b}` in pairs)) {
         areas.push({
           sets: [a!, b!],
@@ -500,7 +500,7 @@ export function greedyLayout(areas: Area[], params?: any) {
         );
 
         for (var l = 0; l < extraPoints.length; ++l) {
-          points.push(extraPoints[l]);
+          points.push(extraPoints[l]!);
         }
       }
     }
