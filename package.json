@@ -1,6 +1,6 @@
 {
   "name": "venn-helper",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "description": "Area Proportional Venn and Euler Diagrams",
   "author": "Ben Frederickson <ben@benfrederickson.com> (http:/www.benfrederickson.com)",
   "url": "https://github.com/benfred/venn.js/issues",

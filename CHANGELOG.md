@@ -1,5 +1,11 @@
 # venn-helper
 
+## 2.1.1
+
+### Patch Changes
+
+- 9eef3dc: add build errors to bundle
+
 ## 2.1.0
 
 ### Minor Changes
