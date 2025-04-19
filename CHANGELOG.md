@@ -1,5 +1,11 @@
 # venn-helper
 
+## 2.2.0
+
+### Minor Changes
+
+- 353e658: minify package
+
 ## 2.1.1
 
 ### Patch Changes

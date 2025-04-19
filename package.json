@@ -1,6 +1,6 @@
 {
   "name": "venn-helper",
-  "version": "2.1.1",
+  "version": "2.2.0",
   "description": "Area Proportional Venn and Euler Diagrams",
   "author": "Ben Frederickson <ben@benfrederickson.com> (http:/www.benfrederickson.com)",
   "url": "https://github.com/benfred/venn.js/issues",
@@ -16,6 +16,8 @@
     "@arethetypeswrong/cli": "^0.17.4",
     "@changesets/cli": "^2.28.1",
     "@vitest/coverage-v8": "^3.0.7",
+    "d3-selection": "^3.0.0",
+    "d3-transition": "^3.0.1",
     "jshint": "^2.8.0",
     "rollup": "^0.59.4",
     "rollup-plugin-commonjs": "^9.1.3",
@@ -66,8 +68,6 @@
     "postpublish": "zip -j build/venn.zip -- LICENSE README.md build/venn.js build/venn.min.js"
   },
   "dependencies": {
-    "d3-selection": "^1.0.2",
-    "d3-transition": "^1.0.1",
     "fmin": "0.0.2"
   }
 }
