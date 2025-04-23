@@ -1,6 +1,6 @@
 {
   "name": "venn-helper",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "description": "Area Proportional Venn and Euler Diagrams",
   "author": "Ben Frederickson <ben@benfrederickson.com> (http:/www.benfrederickson.com)",
   "url": "https://github.com/benfred/venn.js/issues",
@@ -60,7 +60,7 @@
     "test": "vitest",
     "lint": "tsc",
     "local-release": "changeset version && changeset publish",
-    "ci": "npm run build && npm run lint && npm run check-exports && npm run lint",
+    "ci": "npm run build && npm run lint && npm run check-exports",
     "pretest": "rm -rf build && rollup -c && cp build/venn.js .",
     "test:2": "jshint src/*.js && tape 'tests/**/*test.js'",
     "prepublish": "npm run test && uglifyjs build/venn.js -c -m -o build/venn.min.js",

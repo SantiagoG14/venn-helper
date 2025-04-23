@@ -1,5 +1,11 @@
 # venn-helper
 
+## 2.3.0
+
+### Minor Changes
+
+- 7011df7: add layout param to change layout function when computing venn
+
 ## 2.2.0
 
 ### Minor Changes
