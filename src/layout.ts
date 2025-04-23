@@ -31,7 +31,7 @@ export type Circle = {
   size?: number;
   radius: number;
   parent?: Circle;
-  setid?: string;
+  setid: string;
 };
 
 type OverLap = {
@@ -40,24 +40,37 @@ type OverLap = {
   weight: number;
 };
 
-type Params = {
-  lossFunction?: (sets: CircleRecord, overlaps: Area[]) => number;
-  initialLayout?: (areas: Area[], params: Params) => CircleRecord;
+export type Params = {
+  /** layout algorithm used during computations of the venn diagram */
+  layout?: "greedy" | "MDS" | "best";
+  /** max of number iterations when performing a MSDConstrainedLayout */
   restarts?: number;
   maxIterations?: number;
+  /** number from 0-1 that to seed the random positions when using the MSDConstrainedLayout */
+  seed?: number;
   history?: {
     x: number[];
   }[];
 };
 
+type LayoutFunction = (areas: Area[], params: Params) => CircleRecord;
+
+const layoutFunctionMap = new Map<"greedy" | "MDS" | "best", LayoutFunction>([
+  ["greedy", greedyLayout],
+  ["MDS", constrainedMDSLayout],
+  ["best", bestInitialLayout],
+]);
+
 /** given a list of set objects, and their corresponding overlaps.
 updates the (x, y, radius) attribute on each set such that their positions
 roughly correspond to the desired overlaps */
-export function venn(areas: Area[], parameters: Params = {}) {
-  parameters = parameters || {};
+export function venn(areas: Area[], parameters?: Params) {
+  parameters = parameters ?? {};
   parameters.maxIterations = parameters.maxIterations || 500;
-  var initialLayout = parameters.initialLayout || bestInitialLayout;
-  var loss = parameters.lossFunction || lossFunction;
+  parameters.seed = parameters.seed ?? Math.random();
+
+  const initialLayout = layoutFunctionMap.get(parameters.layout ?? "best") as LayoutFunction;
+  var loss = lossFunction;
 
   // add in missing pairwise areas as having 0 size
   areas = addMissingAreas(areas);
@@ -90,14 +103,16 @@ export function venn(areas: Area[], parameters: Params = {}) {
           x: values[2 * i]!,
           y: values[2 * i + 1]!,
           radius: circle.radius,
+          setid: setid,
           size: circle.size,
           rowid: circle.rowid,
         };
       }
-      return loss(current, areas);
+      const l = loss(current, areas);
+      return l;
     },
     initial,
-    parameters,
+    parameters
   );
 
   // transform solution vector back to x/y points
@@ -105,9 +120,8 @@ export function venn(areas: Area[], parameters: Params = {}) {
   for (var i = 0; i < setids.length; ++i) {
     const setid = setids[i] as string;
     const circle = circles[setid];
-    if (!circle) continue;
-    circle.x = positions[2 * i]!;
-    circle.y = positions[2 * i + 1]!;
+    circle!.x = positions[2 * i]!;
+    circle!.y = positions[2 * i + 1]!;
   }
 
   return circles;
@@ -120,7 +134,7 @@ have the overlap area 'overlap' */
 export function distanceFromIntersectArea(
   r1: number,
   r2: number,
-  overlap: number,
+  overlap: number
 ) {
   // handle complete overlapped circles
   if (Math.min(r1, r2) * Math.min(r1, r2) * Math.PI <= overlap + SMALL) {
@@ -132,7 +146,7 @@ export function distanceFromIntersectArea(
       return circleOverlap(r1, r2, distance) - overlap;
     },
     0,
-    r1 + r2,
+    r1 + r2
   );
 }
 
@@ -162,7 +176,7 @@ function addMissingAreas(areas: Area[]) {
     }
   }
 
-  ids.sort((a, b) => a.localeCompare(b));
+  ids.sort((a, b) => a.toString().localeCompare(b.toString()));
 
   for (i = 0; i < ids.length; ++i) {
     a = ids[i]!;
@@ -184,7 +198,7 @@ function addMissingAreas(areas: Area[]) {
 export function getDistanceMatrices(
   areas: Area[],
   sets: Area[],
-  setids: Record<string, number>,
+  setids: Record<string, number>
 ) {
   // initialize an empty distance matrix between all the points
   var distances = zerosM(sets.length, sets.length),
@@ -194,29 +208,32 @@ export function getDistanceMatrices(
   // the areas match
   areas
     .filter(function (x) {
-      return x.sets.length == 2;
+      return x.sets.length === 2;
     })
     .map(function (current) {
-      var left = setids[current.sets[0]!],
-        right = setids[current.sets[1]!],
-        r1 = Math.sqrt(sets[left!]!.size / Math.PI),
-        r2 = Math.sqrt(sets[right!]!.size / Math.PI),
+      var left = setids[current.sets[0]!];
+      var right = setids[current.sets[1]!];
+
+      if (left === undefined || right === undefined) return current;
+
+      var r1 = Math.sqrt(sets[left]!.size / Math.PI),
+        r2 = Math.sqrt(sets[right]!.size / Math.PI),
         distance = distanceFromIntersectArea(r1, r2, current.size);
 
-      distances[left!]![right!] = distances[right!]![left!] = distance;
+      distances[left]![right] = distances[right]![left] = distance;
 
       // also update constraints to indicate if its a subset or disjoint
       // relationship
       var c = 0;
       if (
         current.size + 1e-10 >=
-        Math.min(sets[left!]!.size, sets[right!]!.size)
+        Math.min(sets[left]!.size, sets[right]!.size)
       ) {
         c = 1;
       } else if (current.size <= 1e-10) {
         c = -1;
       }
-      constraints[left!]![right!] = constraints[right!]![left!] = c;
+      constraints[left]![right] = constraints[right]![left] = c;
     });
 
   return { distances: distances, constraints: constraints };
@@ -227,7 +244,7 @@ function constrainedMDSGradient(
   x: number[],
   fxprime: number[],
   distances: number[][],
-  constraints: number[][],
+  constraints: number[][]
 ) {
   var loss = 0,
     i: number;
@@ -270,7 +287,7 @@ function constrainedMDSGradient(
 /// takes the best working variant of either constrained MDS or greedy
 export function bestInitialLayout(areas: Area[], params: Params) {
   var initial = greedyLayout(areas, params);
-  var loss = params.lossFunction || lossFunction;
+  var loss = lossFunction;
 
   // greedylayout is sufficient for all 2/3 circle cases. try out
   // constrained MDS for higher order problems, take its output
@@ -288,10 +305,23 @@ export function bestInitialLayout(areas: Area[], params: Params) {
   return initial;
 }
 
+// Simple seeded random number generator (Mulberry32)
+function createRandomGenerator(seed: number = 1) {
+  return () => {
+    seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = Math.imul(t ^ (t >>> 7), 61 | t) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
 /// use the constrained MDS variant to generate an initial layout
 export function constrainedMDSLayout(areas: Area[], params: Params) {
-  params = params || {};
   var restarts = params.restarts || 10;
+
+  // Create a deterministic random generator if seed is provided
+  // const random =
+  //   params.seed !== undefined ? createRandomGenerator(params.seed) : Math.random
 
   // bidirectionally map sets to a rowid  (so we can create a matrix)
   var sets: Area[] = [],
@@ -318,15 +348,19 @@ export function constrainedMDSLayout(areas: Area[], params: Params) {
     });
   });
 
+  const seed = ((params.seed ?? Math.random()) * 2 ** 32) >>> 0;
+
+  const getRand = createRandomGenerator(seed);
+
   var best, current;
   for (i = 0; i < restarts; ++i) {
-    var initial = zeros(distances.length * 2).map(Math.random);
+    var initial = zeros(distances.length * 2).map(() => getRand());
 
     current = conjugateGradient(
       (x, fxprime) =>
         constrainedMDSGradient(x, fxprime, distances, constraints),
       initial,
-      params,
+      params
     );
 
     if (!best || current.fx < best.fx) {
@@ -341,12 +375,13 @@ export function constrainedMDSLayout(areas: Area[], params: Params) {
     var set = sets[i];
     const setName = set?.sets[0];
 
-    if (!set || !setName) continue;
+    if (set === undefined || setName === undefined) continue;
 
     circles[setName] = {
       x: positions![2 * i]! * norm,
       y: positions![2 * i + 1]! * norm,
       radius: Math.sqrt(set.size / Math.PI),
+      setid: setName as string,
       size: set.size,
       rowid: Object.keys(circles).length,
     };
@@ -363,8 +398,8 @@ export function constrainedMDSLayout(areas: Area[], params: Params) {
 /** Lays out a Venn diagram greedily, going from most overlapped sets to
 least overlapped, attempting to position each new set such that the
 overlapping areas to already positioned sets are basically right */
-export function greedyLayout(areas: Area[], params?: any) {
-  var loss = params && params.lossFunction ? params.lossFunction : lossFunction;
+export function greedyLayout(areas: Area[], _params?: Params) {
+  var loss = lossFunction;
   // define a circle for each set
   var circles: CircleRecord = {},
     setOverlaps: Record<string, OverLap[]> = {},
@@ -378,6 +413,7 @@ export function greedyLayout(areas: Area[], params?: any) {
         y: 1e10,
         rowid: Object.keys(circles).length,
         size: area.size,
+        setid: set,
         radius: Math.sqrt(area.size / Math.PI),
       };
       setOverlaps[set] = [];
@@ -393,6 +429,8 @@ export function greedyLayout(areas: Area[], params?: any) {
     var weight = current.weight ? current.weight : 1.0;
     var left = current.sets[0] as string,
       right = current.sets[1] as string;
+
+    if (left === undefined || right === undefined) continue;
 
     // completely overlapped circles shouldn't be positioned early here
     const leftCircle = circles[left] as Circle;
@@ -491,12 +529,12 @@ export function greedyLayout(areas: Area[], params?: any) {
           d2 = distanceFromIntersectArea(
             set!.radius,
             p2!.radius,
-            overlap[k]!.size,
+            overlap[k]!.size
           );
 
         var extraPoints = circleCircleIntersection(
           { x: p1.x, y: p1.y, radius: d1 },
-          { x: p2!.x, y: p2!.y, radius: d2 },
+          { x: p2!.x, y: p2!.y, radius: d2 }
         );
 
         for (var l = 0; l < extraPoints.length; ++l) {
@@ -519,7 +557,7 @@ export function greedyLayout(areas: Area[], params?: any) {
       }
     }
 
-    if (bestPoint && setIndex) positionSet(bestPoint, setIndex);
+    positionSet(bestPoint!, setIndex!);
   }
 
   return circles;
@@ -545,10 +583,13 @@ export function lossFunction(sets: CircleRecord, overlaps: Area[]) {
     if (area.sets.length === 2) {
       var left = sets[area.sets[0]!],
         right = sets[area.sets[1]!];
+
+      if (left === undefined || right === undefined) continue;
+
       overlap = circleOverlap(
         left!.radius,
         right!.radius,
-        distance(left!, right!),
+        distance(left!, right!)
       );
     } else {
       overlap = intersectionArea(getCircles(area.sets) as Circle[]).overlap;
@@ -565,7 +606,7 @@ export function lossFunction(sets: CircleRecord, overlaps: Area[]) {
 function orientateCircles(
   circles: Circle[],
   orientation?: number,
-  orientationOrder?: (a: Circle, b: Circle) => number,
+  orientationOrder?: (a: Circle, b: Circle) => number
 ) {
   if (orientationOrder === null) {
     circles.sort(function (a, b) {
@@ -729,13 +770,13 @@ function getBoundingBox(circles: Circle[]) {
         null,
         circles.map(function (c) {
           return c[d] + c.radius;
-        }),
+        })
       ),
       lo = Math.min.apply(
         null,
         circles.map(function (c) {
           return c[d] - c.radius;
-        }),
+        })
       );
     return { max: hi, min: lo };
   };
@@ -757,7 +798,7 @@ type Bounds = {
 export function normalizeSolution(
   solution: Record<string | number, Circle>,
   orientation?: number,
-  orientationOrder?: (a: Circle, b: Circle) => number,
+  orientationOrder?: (a: Circle, b: Circle) => number
 ) {
   if (orientation === null) {
     orientation = Math.PI / 2;
@@ -811,7 +852,7 @@ export function normalizeSolution(
   function addCluster(
     cluster: (Circle[] & { size?: number; bounds?: Bounds }) | undefined,
     right: boolean,
-    bottom: boolean,
+    bottom: boolean
   ) {
     if (!cluster) return;
 
@@ -878,7 +919,7 @@ export function scaleSolution(
   solution: CircleRecord,
   width: number,
   height: number,
-  padding: number,
+  padding: number
 ) {
   var circles: Circle[] = [],
     setids: string[] = [];
@@ -898,7 +939,6 @@ export function scaleSolution(
     yRange = bounds.yRange;
 
   if (xRange.max == xRange.min || yRange.max == yRange.min) {
-    console.log("not scaling solution: zero size detected");
     return solution;
   }
 

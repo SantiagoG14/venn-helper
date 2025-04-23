@@ -10,6 +10,7 @@ export default defineConfig((options: Options) => {
       clean: true,
       dts: true,
       bundle: true,
+      minify: true
     };
   } else {
     return {
