@@ -1,5 +1,11 @@
 # venn-helper
 
+## 2.3.1
+
+### Patch Changes
+
+- 4653402: forgot to add updates
+
 ## 2.3.0
 
 ### Minor Changes
