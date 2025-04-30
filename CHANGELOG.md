@@ -1,5 +1,11 @@
 # venn-helper
 
+## 2.3.3
+
+### Patch Changes
+
+- 09087fc: update type and name of vennSolution func
+
 ## 2.3.2
 
 ### Patch Changes
