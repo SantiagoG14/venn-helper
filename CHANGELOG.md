@@ -1,5 +1,11 @@
 # venn-helper
 
+## 2.3.5
+
+### Patch Changes
+
+- 52c6a0d: update intersection textCenters to be the right x and y
+
 ## 2.3.4
 
 ### Patch Changes
