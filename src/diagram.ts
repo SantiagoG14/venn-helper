@@ -64,8 +64,8 @@ export function vennSolution(
         set_id: datum.sets.join(set_id_delimiter),
         sets: datum.sets,
         path: intersectionAreaPath(datum.sets.map((set) => solution[set]!)),
-        textY: disjoint ? undefined : textX,
-        textX: disjoint ? undefined : textY,
+        textY: disjoint ? undefined : textY,
+        textX: disjoint ? undefined : textX,
         size: datum.size,
       };
     })
