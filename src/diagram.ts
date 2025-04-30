@@ -1,251 +1,187 @@
-import type { Area, Circle, CircleRecord, Params } from "./layout"
+import type { Area, Circle, CircleRecord, Params } from "./layout";
 
-import { intersectionArea, distance, getCenter } from "./circle-intersection"
-import { venn, normalizeSolution, scaleSolution } from "./layout"
-import { nelderMead } from "fmin"
+import { intersectionArea, distance, getCenter } from "./circle-intersection";
+import { venn, normalizeSolution, scaleSolution } from "./layout";
+import { nelderMead } from "fmin";
 
 type Options = {
-  orientation: number
-  width: number
-  height: number
-  padding: number
-  normalize: boolean
-}
+  /** orientation of the venn in radians */
+  orientation: number;
+  /** width of the venn */
+  width: number;
+  /** height of the venn */
+  height: number;
+  /** padding of the venn */
+  padding: number;
+  /** each set has an set_id property joined by a delimiter, set the delimiter here */
+  set_id_delimiter: string;
+  /**  function to determine the order of the orientation */
+  orientationOrder?: (a: Circle, b: Circle) => number
+};
 
-export function chartVega(data: Area[], options: Options, vennParams: Params) {
-  const filteredData = data.filter(
+export function getVennSolution(
+  data: Area[],
+  {
+    layout,
+    height,
+    width,
+    padding,
+    seed,
+    orientation,
+    set_id_delimiter,
+    orientationOrder
+  }: Params & Options
+) {
+  const safeData = data.filter(
     (datum) => datum.size !== 0 && datum.sets.length > 0
-  )
+  );
 
-  let circles: CircleRecord = {}
-  let textCenters: TextCenterRecord = {}
-
-  if (filteredData.length > 0) {
-    let solution = venn(filteredData, vennParams)
-
-    if (options.normalize) {
-      solution = normalizeSolution(solution, options.orientation)
-    }
-
-    circles = scaleSolution(
-      solution,
-      options.width,
-      options.height,
-      options.padding
-    )
-    textCenters = computeTextCentres(circles, filteredData)
+  if (safeData.length === 0) {
+    return { circles: [], intersections: [] };
   }
 
-  const intersections = filteredData
+  let solution = venn(safeData, { layout, seed });
+
+  if (orientation !== Math.PI / 2) {
+    solution = normalizeSolution(solution, orientation, orientationOrder);
+  }
+
+  // divide the width by a small amount so that the venn does not overflow
+  solution = scaleSolution(solution, width, height, padding);
+  const textCenters = computeTextCentres(solution, safeData);
+
+  const intersections = safeData
     .map((datum) => {
-      if (datum.sets.length <= 1) return null
+      const setName = datum.sets.join(",");
+      // Added size to the intersection data
 
+      const { x: textX, y: textY, disjoint } = textCenters[setName]!;
       return {
-        sets: datum,
-        path: intersectionAreaPath(datum.sets.map((set) => circles[set]!)),
-        text: datum.label || datum.sets.join("∩"),
-      }
+        set_id: datum.sets.join(set_id_delimiter),
+        sets: datum.sets,
+        path: intersectionAreaPath(datum.sets.map((set) => solution[set]!)),
+        textY: disjoint ? undefined : textX,
+        textX: disjoint ? undefined : textY,
+        size: datum.size,
+      };
     })
-    .filter(Boolean)
+    .filter((datum) => datum.sets.length > 1);
 
-  const circlesData = Object.entries(circles).map(([key, circle]) => ({
-    set: key,
+  const circles = Object.entries(solution).map(([key, circle]) => ({
+    set_id: key,
     x: circle.x,
     y: circle.y,
+    // the size represents the radius, to scale we need to convert to the area of the square
     size: Math.pow(circle.radius * 2, 2),
-    text: key,
     textX: textCenters[key]!.x,
     textY: textCenters[key]!.y,
-  }))
+  }));
 
-  const schema = {
-    $schema: "https://vega.github.io/schema/vega/v5.json",
-    width: options.width,
-    height: options.height,
-    padding: options.padding,
-
-    data: [
-      {
-        name: "circles",
-        values: circlesData,
-      },
-      {
-        name: "intersections",
-        values: intersections,
-      },
-    ],
-
-    scales: [
-      {
-        name: "color",
-        type: "ordinal",
-        domain: { data: "circles", field: "set" },
-        range: "category",
-      },
-    ],
-
-    marks: [
-      {
-        type: "symbol",
-        from: { data: "circles" },
-        encode: {
-          enter: {
-            x: { field: "x" },
-            y: { field: "y" },
-            size: { field: "size" },
-            shape: { value: "circle" },
-            fillOpacity: { value: 0.3 },
-            fill: { scale: "color", field: "set" },
-            tooltip: [{ field: "text", type: "quantitative" }],
-          },
-          hover: {
-            fillOpacity: { value: 0.5 },
-          },
-          update: {
-            fillOpacity: { value: 0.3 },
-          },
-        },
-      },
-      {
-        type: "path",
-        from: { data: "intersections" },
-        encode: {
-          enter: {
-            path: { field: "path" },
-            fill: { value: "grey" },
-            fillOpacity: { value: 0 },
-            tooltip: [{ field: "text", type: "quantitative" }],
-          },
-
-          hover: {
-            stroke: { value: "black" },
-            strokeWidth: { value: 1 },
-            fill: { value: "grey" },
-          },
-
-          update: {
-            strokeWidth: { value: 0 },
-          },
-        },
-      },
-      {
-        type: "text",
-        from: { data: "circles" },
-        encode: {
-          enter: {
-            x: { field: "textX" },
-            y: { field: "textY" },
-            text: { field: "text" },
-            fontSize: { value: 14 },
-            fill: { scale: "color", field: "set" },
-            fontWeight: { value: "normal" },
-          },
-        },
-      },
-    ],
-  }
-
-  return { circles: circlesData, intersections, schema }
+  return { circles, intersections };
 }
 
 export function intersectionAreaPath(circles: Circle[]) {
-  const { stats } = intersectionArea(circles)
-  var arcs = stats.arcs
+  const { stats } = intersectionArea(circles);
+  var arcs = stats.arcs;
 
   if (arcs.length === 0) {
-    return "M 0 0"
+    return "M 0 0";
   }
 
   if (arcs.length === 1) {
-    var circle = arcs[0]!.circle
-    return circlePath(circle.x, circle.y, circle.radius)
+    var circle = arcs[0]!.circle;
+    return circlePath(circle.x, circle.y, circle.radius);
   }
 
   // draw path around arcs
-  var ret = ["\nM", arcs[0]!.p2.x, arcs[0]!.p2.y]
+  var ret = ["\nM", arcs[0]!.p2.x, arcs[0]!.p2.y];
   for (const arc of arcs) {
-    const r = arc.circle.radius
-    const wide = arc.width > r
-    ret.push("\nA", r, r, 0, wide ? 1 : 0, 1, arc.p1.x, arc.p1.y)
+    const r = arc.circle.radius;
+    const wide = arc.width > r;
+    ret.push("\nA", r, r, 0, wide ? 1 : 0, 1, arc.p1.x, arc.p1.y);
   }
 
-  return ret.join(" ")
+  return ret.join(" ");
 }
 
 export function circlePath(x: number, y: number, r: number) {
-  var ret: (string | number)[] = []
-  ret.push("\nM", x.toString(), y.toString())
-  ret.push("\nm", -r, 0)
-  ret.push("\na", r, r, 0, 1, 0, r * 2, 0)
-  ret.push("\na", r, r, 0, 1, 0, -r * 2, 0)
-  return ret.join(" ")
+  var ret: (string | number)[] = [];
+  ret.push("\nM", x.toString(), y.toString());
+  ret.push("\nm", -r, 0);
+  ret.push("\na", r, r, 0, 1, 0, r * 2, 0);
+  ret.push("\na", r, r, 0, 1, 0, -r * 2, 0);
+  return ret.join(" ");
 }
 
-export type TextCenterRecord = ReturnType<typeof computeTextCentres>
-export function computeTextCentres(circles: CircleRecord, areas: Area[]) {
+export type TextCenterRecord = ReturnType<typeof computeTextCentres>;
+export function computeTextCentres(
+  circles: CircleRecord,
+  areas: Area[],
+  delimiter = ","
+) {
   var ret: Record<
-      string | number,
-      { x: number; y: number; disjoint?: boolean }
-    > = {},
-    overlapped = getOverlappingCircles(circles)
+    string | number,
+    { x: number; y: number; disjoint?: boolean }
+  > = {},
+    overlapped = getOverlappingCircles(circles);
   for (var i = 0; i < areas.length; ++i) {
     var area = areas[i]!.sets,
       areaids: Record<string, boolean> = {},
-      exclude: Record<string, boolean> = {}
+      exclude: Record<string, boolean> = {};
     for (var j = 0; j < area.length; ++j) {
-      areaids[area[j]!]! = true
-      var overlaps = overlapped[area[j]!]
+      areaids[area[j]!]! = true;
+      var overlaps = overlapped[area[j]!];
       // keep track of any circles that overlap this area,
       // and don't consider for purposes of computing the text
       // centre
-      if (!overlaps) continue
+      if (!overlaps) continue;
 
       for (var k = 0; k < overlaps.length; ++k) {
-        exclude[overlaps[k]!] = true
+        exclude[overlaps[k]!] = true;
       }
     }
 
     var interior: Circle[] = [],
-      exterior: Circle[] = []
+      exterior: Circle[] = [];
     for (var setid in circles) {
       if (setid in areaids) {
-        interior.push(circles[setid]!)
+        interior.push(circles[setid]!);
       } else if (!(setid in exclude)) {
-        exterior.push(circles[setid]!)
+        exterior.push(circles[setid]!);
       }
     }
 
-    var centre = computeTextCentre(interior, exterior)
-    ret[area.toString()] = centre
+    var centre = computeTextCentre(interior, exterior);
+    ret[area.join(delimiter)] = centre;
 
     if (centre.disjoint && areas[i]!.size > 0) {
-      console.log("WARNING: area " + area + " not represented on screen")
+      console.log("WARNING: area " + area + " not represented on screen");
     }
   }
-  return ret
+  return ret;
 }
 
 function getOverlappingCircles(circles: CircleRecord) {
   var ret: Record<string, string[]> = {},
-    circleids = Object.keys(circles)
+    circleids = Object.keys(circles);
 
-  circleids.forEach((id) => (ret[id] = []))
+  circleids.forEach((id) => (ret[id] = []));
 
   for (var i = 0; i < circleids.length; i++) {
-    var a = circles[circleids[i]!]
+    var a = circles[circleids[i]!];
 
     for (var j = i + 1; j < circleids.length; ++j) {
       var b = circles[circleids[j]!],
-        d = distance(a!, b!)
+        d = distance(a!, b!);
 
       if (d + b!.radius <= a!.radius + 1e-10) {
-        ret[circleids[j]!]!.push(circleids[i]!)
+        ret[circleids[j]!]!.push(circleids[i]!);
       } else if (d + a!.radius <= b!.radius + 1e-10) {
-        ret[circleids[i]!]!.push(circleids[j]!)
+        ret[circleids[i]!]!.push(circleids[j]!);
       }
     }
   }
-  return ret
+  return ret;
 }
 
 // compute the center of some circles by maximizing the margin of
@@ -255,88 +191,88 @@ export function computeTextCentre(interior: Circle[], exterior: Circle[]) {
   // get an initial estimate by sampling around the interior circles
   // and taking the point with the biggest margin
   var points: { x: number; y: number }[] = [],
-    i: number
+    i: number;
   for (i = 0; i < interior.length; ++i) {
-    var c = interior[i]
+    var c = interior[i];
 
-    if (!c) continue
-    points.push({ x: c.x, y: c.y })
-    points.push({ x: c.x + c.radius / 2, y: c.y })
-    points.push({ x: c.x - c.radius / 2, y: c.y })
-    points.push({ x: c.x, y: c.y + c.radius / 2 })
-    points.push({ x: c.x, y: c.y - c.radius / 2 })
+    if (!c) continue;
+    points.push({ x: c.x, y: c.y });
+    points.push({ x: c.x + c.radius / 2, y: c.y });
+    points.push({ x: c.x - c.radius / 2, y: c.y });
+    points.push({ x: c.x, y: c.y + c.radius / 2 });
+    points.push({ x: c.x, y: c.y - c.radius / 2 });
   }
   var initial = points[0],
-    margin = circleMargin(points[0]!, interior, exterior)
+    margin = circleMargin(points[0]!, interior, exterior);
   for (i = 1; i < points.length; ++i) {
-    var m = circleMargin(points[i]!, interior, exterior)
+    var m = circleMargin(points[i]!, interior, exterior);
     if (m >= margin) {
-      initial = points[i]
-      margin = m
+      initial = points[i];
+      margin = m;
     }
   }
 
   // maximize the margin numerically
   var solution = nelderMead(
-    function (p) {
-      return -1 * circleMargin({ x: p[0]!, y: p[1]! }, interior, exterior)
+    function(p) {
+      return -1 * circleMargin({ x: p[0]!, y: p[1]! }, interior, exterior);
     },
     [initial!.x, initial!.y],
     { maxIterations: 500, minErrorDelta: 1e-10 }
-  ).x
+  ).x;
   var ret: { x: number; y: number; disjoint?: boolean } = {
     x: solution[0]!,
     y: solution[1]!,
-  }
+  };
 
   // check solution, fallback as needed (happens if fully overlapped
   // etc)
-  var valid = true
+  var valid = true;
   for (i = 0; i < interior.length; ++i) {
     if (distance(ret, interior[i]!) > interior[i]!.radius) {
-      valid = false
-      break
+      valid = false;
+      break;
     }
   }
 
   for (i = 0; i < exterior.length; ++i) {
     if (distance(ret, exterior[i]!) < exterior[i]!.radius) {
-      valid = false
-      break
+      valid = false;
+      break;
     }
   }
 
   if (!valid) {
     if (interior.length == 1) {
-      ret = { x: interior[0]!.x, y: interior[0]!.y }
+      ret = { x: interior[0]!.x, y: interior[0]!.y };
     } else {
-      const { stats: areaStats } = intersectionArea(interior)
+      const { stats: areaStats } = intersectionArea(interior);
 
       if (areaStats.arcs.length === 0) {
-        ret = { x: 0, y: -1000, disjoint: true }
+        ret = { x: 0, y: -1000, disjoint: true };
       } else if (areaStats.arcs.length === 1) {
         ret = {
           x: areaStats.arcs[0]!.circle.x,
           y: areaStats.arcs[0]!.circle.y,
-        }
+        };
       } else if (exterior.length) {
         // try again without other circles
-        ret = computeTextCentre(interior, [])
+        ret = computeTextCentre(interior, []);
       } else {
         // take average of all the points in the intersection
         // polygon. this should basically never happen
         // and has some issues:
         // https://github.com/benfred/venn.js/issues/48#issuecomment-146069777
         ret = getCenter(
-          areaStats.arcs.map(function (a) {
-            return a.p1
+          areaStats.arcs.map(function(a) {
+            return a.p1;
           })
-        )
+        );
       }
     }
   }
 
-  return ret
+  return ret;
 }
 
 function circleMargin(
@@ -346,20 +282,20 @@ function circleMargin(
 ) {
   var margin = interior[0]!.radius - distance(interior[0]!, current),
     i,
-    m
+    m;
 
   for (i = 1; i < interior.length; ++i) {
-    m = interior[i]!.radius - distance(interior[i]!, current)
+    m = interior[i]!.radius - distance(interior[i]!, current);
     if (m <= margin) {
-      margin = m
+      margin = m;
     }
   }
 
   for (i = 0; i < exterior.length; ++i) {
-    m = distance(exterior[i]!, current) - exterior[i]!.radius
+    m = distance(exterior[i]!, current) - exterior[i]!.radius;
     if (m <= margin) {
-      margin = m
+      margin = m;
     }
   }
-  return margin
+  return margin;
 }
