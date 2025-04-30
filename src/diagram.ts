@@ -23,6 +23,91 @@ type GetVennSolutionOptions = {
   seed?: number;
 };
 
+export function chartVega(data: Area[], options: GetVennSolutionOptions) {
+  const { circles: circlesData, intersections } = vennSolution(data, options);
+  return {
+    $schema: "https://vega.github.io/schema/vega/v5.json",
+    width: options.width,
+    height: options.height,
+    padding: options.padding,
+    data: [
+      {
+        name: "circles",
+        values: circlesData,
+      },
+      {
+        name: "intersections",
+        values: intersections,
+      },
+    ],
+    scales: [
+      {
+        name: "color",
+        type: "ordinal",
+        domain: { data: "circles", field: "set_id" },
+        range: "category",
+      },
+    ],
+    marks: [
+      {
+        type: "symbol",
+        from: { data: "circles" },
+        encode: {
+          enter: {
+            x: { field: "x" },
+            y: { field: "y" },
+            size: { field: "size" },
+            shape: { value: "circle" },
+            fillOpacity: { value: 0.3 },
+            fill: { scale: "color", field: "set_id" },
+            tooltip: [{ field: "text", type: "quantitative" }],
+          },
+          hover: {
+            fillOpacity: { value: 0.5 },
+          },
+          update: {
+            fillOpacity: { value: 0.3 },
+          },
+        },
+      },
+      {
+        type: "path",
+        from: { data: "intersections" },
+        encode: {
+          enter: {
+            path: { field: "path" },
+            fill: { value: "grey" },
+            fillOpacity: { value: 0 },
+            tooltip: [{ field: "text", type: "quantitative" }],
+          },
+          hover: {
+            stroke: { value: "black" },
+            strokeWidth: { value: 1 },
+            fill: { value: "grey" },
+          },
+          update: {
+            strokeWidth: { value: 0 },
+          },
+        },
+      },
+      {
+        type: "text",
+        from: { data: "intersections" },
+        encode: {
+          enter: {
+            x: { field: "textX" },
+            y: { field: "textY" },
+            text: { field: "size" },
+            fontSize: { value: 14 },
+            fill: { scale: "color", field: "set_id" },
+            fontWeight: { value: "normal" },
+          },
+        },
+      },
+    ],
+  };
+}
+
 export function vennSolution(
   data: Area[],
   {
@@ -64,8 +149,8 @@ export function vennSolution(
         set_id: datum.sets.join(set_id_delimiter),
         sets: datum.sets,
         path: intersectionAreaPath(datum.sets.map((set) => solution[set]!)),
-        textY: disjoint ? undefined : textY,
         textX: disjoint ? undefined : textX,
+        textY: disjoint ? undefined : textY,
         size: datum.size,
       };
     })

@@ -1,5 +1,11 @@
 # venn-helper
 
+## 2.3.6
+
+### Patch Changes
+
+- 0bbcb07: more adjustments
+
 ## 2.3.5
 
 ### Patch Changes
