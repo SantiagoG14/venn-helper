@@ -1,5 +1,11 @@
 # venn-helper
 
+## 2.3.4
+
+### Patch Changes
+
+- f85a1ab: clean up types for vennSolution
+
 ## 2.3.3
 
 ### Patch Changes
