@@ -4,7 +4,7 @@ import { intersectionArea, distance, getCenter } from "./circle-intersection";
 import { venn, normalizeSolution, scaleSolution } from "./layout";
 import { nelderMead } from "fmin";
 
-type Options = {
+type GetVennSolutionOptions = {
   /** orientation of the venn in radians */
   orientation: number;
   /** width of the venn */
@@ -16,10 +16,14 @@ type Options = {
   /** each set has an set_id property joined by a delimiter, set the delimiter here */
   set_id_delimiter: string;
   /**  function to determine the order of the orientation */
-  orientationOrder?: (a: Circle, b: Circle) => number
+  orientationOrder?: (a: Circle, b: Circle) => number;
+  /** layout algorithm used during computations of the venn diagram */
+  layout?: "greedy" | "MDS" | "best";
+  /** number from 0-1 that to seed the random positions when using the MSDConstrainedLayout */
+  seed?: number;
 };
 
-export function getVennSolution(
+export function vennSolution(
   data: Area[],
   {
     layout,
@@ -29,8 +33,8 @@ export function getVennSolution(
     seed,
     orientation,
     set_id_delimiter,
-    orientationOrder
-  }: Params & Options
+    orientationOrder,
+  }: GetVennSolutionOptions
 ) {
   const safeData = data.filter(
     (datum) => datum.size !== 0 && datum.sets.length > 0
