@@ -1,5 +1,11 @@
 # venn-helper
 
+## 2.3.2
+
+### Patch Changes
+
+- 30941b5: add a venn solution function that encapsulates everything
+
 ## 2.3.1
 
 ### Patch Changes
